@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
 import secrets
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, AsyncIterator
+from urllib.parse import quote
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI, Form, Request
@@ -17,9 +20,12 @@ from app.accounts import (
     set_warm_enabled,
     upsert_account,
 )
+from app.config import get_settings
 from app.db import get_setting, init_db, set_setting
 from app.providers import gmail_oauth, imap_smtp
 from app.warmer import recent_events, run_warm_cycle, stats
+
+log = logging.getLogger("kindling")
 
 BASE = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(BASE / "templates"))
@@ -28,21 +34,45 @@ templates = Jinja2Templates(directory=str(BASE / "templates"))
 def _fmt_ts(value: Any) -> str:
     try:
         return time.strftime("%b %d %H:%M", time.localtime(float(value)))
-    except Exception:
+    except (TypeError, ValueError, OSError):
         return str(value)
 
 
 templates.env.filters["fmt_ts"] = _fmt_ts
 
-app = FastAPI(title="Kindling", description="Open-source email warmer")
-app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
-
 scheduler = BackgroundScheduler()
 _oauth_states: dict[str, str] = {}
 
+_WEAK_SECRETS = {
+    "",
+    "dev-only-change-me",
+    "change-me-to-a-long-random-string",
+    "change-me",
+}
 
-@app.on_event("startup")
-def on_startup() -> None:
+
+def _tick_warmer() -> None:
+    if get_setting("warmer_running", "0") != "1":
+        return
+    try:
+        result = run_warm_cycle()
+        if not result.get("ok"):
+            log.info("Warm cycle skipped: %s", result.get("reason"))
+    except Exception:
+        log.exception("Warm cycle failed")
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+    )
+    settings = get_settings()
+    if settings.app_secret.strip() in _WEAK_SECRETS or len(settings.app_secret) < 16:
+        log.warning(
+            "APP_SECRET is weak or default. Set a long random value before storing real credentials."
+        )
     init_db()
     if not scheduler.running:
         scheduler.add_job(
@@ -54,21 +84,17 @@ def on_startup() -> None:
             max_instances=1,
         )
         scheduler.start()
-
-
-@app.on_event("shutdown")
-def on_shutdown() -> None:
+    yield
     if scheduler.running:
         scheduler.shutdown(wait=False)
 
 
-def _tick_warmer() -> None:
-    if get_setting("warmer_running", "0") != "1":
-        return
-    try:
-        run_warm_cycle()
-    except Exception:
-        pass
+app = FastAPI(
+    title="Kindling",
+    description="Open-source email warmer",
+    lifespan=lifespan,
+)
+app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
 
 
 def _ctx(request: Request, **extra: Any) -> dict[str, Any]:
@@ -128,8 +154,10 @@ def add_imap_account(
             imap_port=imap_port,
         )
     except Exception as exc:
+        log.warning("IMAP/SMTP login failed for %s: %s", email, exc)
+        detail = quote(str(exc)[:120], safe="")
         return RedirectResponse(
-            f"/?err=login_failed&detail={str(exc)[:120]}", status_code=303
+            f"/?err=login_failed&detail={detail}", status_code=303
         )
 
     upsert_account(
@@ -164,13 +192,12 @@ def gmail_connect():
 
 @app.get("/auth/gmail/callback")
 def gmail_callback(
-    request: Request,
     code: str | None = None,
     state: str | None = None,
     error: str | None = None,
 ):
     if error:
-        return RedirectResponse(f"/?err={error}", status_code=303)
+        return RedirectResponse(f"/?err={quote(error, safe='')}", status_code=303)
     if not code or not state or state not in _oauth_states:
         return RedirectResponse("/?err=oauth_state", status_code=303)
     _oauth_states.pop(state, None)
@@ -217,6 +244,8 @@ def warmer_run_once():
     set_setting("warmer_running", "1")
     try:
         run_warm_cycle()
+    except Exception:
+        log.exception("Manual warm cycle failed")
     finally:
         set_setting("warmer_running", was)
     return RedirectResponse("/", status_code=303)

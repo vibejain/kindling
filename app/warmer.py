@@ -4,7 +4,7 @@ import random
 import time
 from typing import Any
 
-from app.accounts import engage_received, get_account, list_accounts, send_from_account
+from app.accounts import engage_received, list_accounts, send_from_account
 from app.db import db, get_setting, now
 
 
@@ -170,7 +170,7 @@ def run_warm_cycle() -> dict[str, Any]:
         try:
             reply_subject = subject if subject.lower().startswith("re:") else f"Re: {subject}"
             reply_body = (
-                f"Thanks {from_name.split()[0]} — got it. Will follow up soon.\n\n{to_name}"
+                f"Thanks {from_name.split()[0]}. Got it. Will follow up soon.\n\n{to_name}"
             )
             # slight delay so it looks human
             time.sleep(random.uniform(2, 8))

@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import email
-import email.header
 import email.utils
 import imaplib
+import logging
 import smtplib
 import time
 from email.message import EmailMessage
 from typing import Any
+
+log = logging.getLogger(__name__)
 
 
 def test_login(
@@ -72,7 +74,7 @@ def send_mail(
     try:
         _append_sent(imap_host, imap_port, email_addr, password, msg)
     except Exception:
-        pass
+        log.debug("Could not append message to Sent folder for %s", email_addr, exc_info=True)
 
     return {"message_id": msg["Message-ID"], "provider_id": "", "thread_id": ""}
 
@@ -137,7 +139,7 @@ def find_and_engage(
             try:
                 im.store(uid, "+X-GM-LABELS", "(\\Important)")
             except Exception:
-                pass
+                log.debug("X-GM-LABELS not supported for %s", email_addr)
 
         return {"found": True, "uid": uid.decode() if isinstance(uid, bytes) else str(uid)}
 

@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Compile Python
+        run: python -m compileall -q app run.py
+
+      - name: Import check
+        env:
+          APP_SECRET: ci-test-secret-not-for-production
+        run: |
+          python -c "from app.main import app; from app.warmer import run_warm_cycle; from app.crypto import encrypt, decrypt; assert decrypt(encrypt('ok')) == 'ok'; print('ok')"
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Docker build smoke
+        run: docker build -t kindling:ci .

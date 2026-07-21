@@ -2,16 +2,23 @@
 .env
 .env.*
 !.env.example
+*.pem
+*.key
 
 # Python
 .venv/
 venv/
 __pycache__/
 *.py[cod]
+*$py.class
 *.egg-info/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
 
 # Runtime data & credentials
 data/*
@@ -25,7 +32,7 @@ token*.json
 warm_mailboxes.json
 warm_*.json
 
-# Incomplete / local experiments (not part of v1)
+# Incomplete / local experiments (not part of Kindling OSS)
 content-engine/
 
 # OS / IDE
@@ -33,3 +40,4 @@ content-engine/
 .idea/
 .vscode/
 *.swp
+*~

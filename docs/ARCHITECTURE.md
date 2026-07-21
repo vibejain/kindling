@@ -9,6 +9,7 @@ app/
   main.py           # FastAPI routes + scheduler
   warmer.py         # warm cycle logic
   accounts.py       # account CRUD + send/engage
+  crypto.py         # Fernet encrypt/decrypt for secrets
   providers/        # gmail_oauth, imap_smtp
   templates/        # dashboard UI
   static/
@@ -18,8 +19,12 @@ Dockerfile
 docker-compose.yml
 ```
 
+## Flow
+
+Scheduler (every 5 minutes when `warmer_running=1`) picks two active accounts, sends a template email, engages on the receiver (star/important), optionally replies. Limits come from the `settings` table; OAuth and `APP_SECRET` come from `.env`.
+
 ## Dev notes
 
-- Settings live in SQLite `settings` table + `.env` for secrets/OAuth
-- Templates seeded in `db.DEFAULT_TEMPLATES`
-- Scheduler ticks every 5 minutes when `warmer_running=1`
+- Templates are seeded once in `db.DEFAULT_TEMPLATES`
+- Encrypted account secrets live in `accounts.secret_blob`
+- Health check: `GET /health`

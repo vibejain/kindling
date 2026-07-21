@@ -4,7 +4,7 @@ set -euo pipefail
 
 BASE="https://console.cloud.google.com"
 
-echo "Kindling — Gmail OAuth setup"
+echo "Kindling: Gmail OAuth setup"
 echo
 echo "1) Create (or select) a Google Cloud project"
 echo "   ${BASE}/projectcreate"

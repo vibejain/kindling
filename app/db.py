@@ -99,11 +99,11 @@ def init_db() -> None:
 DEFAULT_TEMPLATES = [
     (
         "hey",
-        "hey {to_first} — you around later?\n\n{from_first}",
+        "hey {to_first}, you around later?\n\n{from_first}",
     ),
     (
         "quick thing",
-        "hi {to_first},\n\nrandom thought — did you end up sorting that thing from earlier?\n\n{from_first}",
+        "hi {to_first},\n\nrandom thought: did you end up sorting that thing from earlier?\n\n{from_first}",
     ),
     (
         "checking in",
@@ -115,11 +115,11 @@ DEFAULT_TEMPLATES = [
     ),
     (
         "running late-ish",
-        "hey — running a bit behind today. talk in a bit?\n\n{from_first}",
+        "hey, running a bit behind today. talk in a bit?\n\n{from_first}",
     ),
     (
         "coffee?",
-        "{to_first} — free for a quick chat this afternoon?\n\n{from_first}",
+        "{to_first}, free for a quick chat this afternoon?\n\n{from_first}",
     ),
     (
         "forgot to say",
@@ -131,11 +131,11 @@ DEFAULT_TEMPLATES = [
     ),
     (
         "all good?",
-        "hey {to_first} — everything good on your side?\n\n{from_first}",
+        "hey {to_first}, everything good on your side?\n\n{from_first}",
     ),
     (
         "tiny ask",
-        "quick ask — can you ping me when you're free?\n\n{from_first}",
+        "quick ask: can you ping me when you're free?\n\n{from_first}",
     ),
 ]
 

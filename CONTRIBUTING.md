@@ -8,6 +8,7 @@ Thanks for helping improve Kindling.
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
+# set APP_SECRET to a long random string
 python run.py
 ```
 
@@ -19,6 +20,7 @@ Or: `docker compose up --build`
 - No secrets in commits (`.env`, `client_secret*.json`, `data/`, real mailboxes)
 - Match existing style; prefer clarity over cleverness
 - Update README only when behavior or setup changes
+- Use only owned mailboxes when testing sends
 
 ## Ideas that fit v1
 
