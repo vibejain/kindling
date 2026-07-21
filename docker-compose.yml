@@ -1,0 +1,18 @@
+services:
+  kindling:
+    build: .
+    image: kindling:latest
+    ports:
+      - "8787:8787"
+    env_file:
+      - .env
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "8787"
+      APP_BASE_URL: "${APP_BASE_URL:-http://127.0.0.1:8787}"
+    volumes:
+      - kindling-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  kindling-data:

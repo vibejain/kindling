@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block content %}
+
+{% if request.query_params.get('ok') %}
+  <p class="banner ok">Account connected.</p>
+{% endif %}
+{% if request.query_params.get('err') %}
+  <p class="banner bad">Couldn’t connect: {{ request.query_params.get('detail') or request.query_params.get('err') }}</p>
+{% endif %}
+
+<section class="tiles">
+  <div class="tile"><span>Accounts</span><strong>{{ stats.accounts }}</strong></div>
+  <div class="tile"><span>Warming</span><strong>{{ stats.warming }}</strong></div>
+  <div class="tile"><span>Sent 24h</span><strong>{{ stats.sent_24h }}</strong></div>
+  <div class="tile"><span>Failed 24h</span><strong>{{ stats.failed_24h }}</strong></div>
+</section>
+
+<section class="grid two">
+  <div class="panel">
+    <h2>Connect</h2>
+    <p class="lede">Add mailboxes you own. Kindling warms between them only.</p>
+
+    <div class="block">
+      <h3>Gmail · OAuth</h3>
+      {% if oauth_ready %}
+        <a class="btn primary" href="/auth/gmail">Connect Gmail</a>
+      {% else %}
+        <p class="warn">Set <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code> in <code>.env</code>, or use an App Password below.</p>
+      {% endif %}
+    </div>
+
+    <div class="block">
+      <h3>Gmail · App Password</h3>
+      <form method="post" action="/accounts/imap" class="form">
+        <input type="hidden" name="preset" value="gmail">
+        <input type="hidden" name="smtp_host" value="smtp.gmail.com">
+        <input type="hidden" name="smtp_port" value="465">
+        <input type="hidden" name="imap_host" value="imap.gmail.com">
+        <input type="hidden" name="imap_port" value="993">
+        <label>Email <input name="email" type="email" required placeholder="you@gmail.com" autocomplete="username"></label>
+        <label>Display name <input name="display_name" placeholder="Alex" autocomplete="name"></label>
+        <label>App password <input name="password" type="password" required placeholder="16-character app password" autocomplete="current-password"></label>
+        <button class="btn" type="submit">Add Gmail</button>
+      </form>
+    </div>
+
+    <div class="block">
+      <h3>IMAP / SMTP</h3>
+      <p class="lede">Any provider with IMAP + SMTP (cPanel, workspace mail, etc.).</p>
+      <form method="post" action="/accounts/imap" class="form">
+        <label>Email <input name="email" type="email" required placeholder="you@example.com" autocomplete="username"></label>
+        <label>Display name <input name="display_name" placeholder="Alex" autocomplete="name"></label>
+        <label>Password <input name="password" type="password" required autocomplete="current-password"></label>
+        <div class="row">
+          <label>SMTP host <input name="smtp_host" required placeholder="smtp.example.com"></label>
+          <label>SMTP port <input name="smtp_port" type="number" value="465"></label>
+        </div>
+        <div class="row">
+          <label>IMAP host <input name="imap_host" required placeholder="imap.example.com"></label>
+          <label>IMAP port <input name="imap_port" type="number" value="993"></label>
+        </div>
+        <button class="btn" type="submit">Add mailbox</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Controls</h2>
+    <div class="actions">
+      {% if stats.running %}
+        <form method="post" action="/warmer/stop"><button class="btn danger" type="submit">Pause</button></form>
+      {% else %}
+        <form method="post" action="/warmer/start"><button class="btn primary" type="submit">Start warmer</button></form>
+      {% endif %}
+      <form method="post" action="/warmer/run-once"><button class="btn" type="submit">Run one cycle</button></form>
+    </div>
+
+    <form method="post" action="/settings" class="form tight">
+      <label>Daily sends / account
+        <input name="daily_limit_per_account" type="number" min="1" max="40" value="{{ settings.daily_limit_per_account }}">
+      </label>
+      <label>Min gap (minutes)
+        <input name="min_gap_minutes" type="number" min="5" value="{{ settings.min_gap_minutes }}">
+      </label>
+      <label class="check">
+        <input type="checkbox" name="mark_important" value="1" {% if settings.mark_important == '1' %}checked{% endif %}>
+        Star / mark important on receive
+      </label>
+      <label class="check">
+        <input type="checkbox" name="auto_reply" value="1" {% if settings.auto_reply == '1' %}checked{% endif %}>
+        Auto-reply from receiver
+      </label>
+      <button class="btn" type="submit">Save</button>
+    </form>
+
+    <h3 class="mt">Inboxes</h3>
+    {% if accounts %}
+      <ul class="accounts">
+        {% for a in accounts %}
+        <li>
+          <div>
+            <strong>{{ a.email }}</strong>
+            <span class="muted">{{ a.provider }} · {{ a.display_name }}</span>
+          </div>
+          <div class="row-actions">
+            <form method="post" action="/accounts/{{ a.id }}/toggle">
+              <input type="hidden" name="warm_enabled" value="{% if a.warm_enabled %}0{% else %}1{% endif %}">
+              <button class="btn tiny" type="submit">{% if a.warm_enabled %}On{% else %}Off{% endif %}</button>
+            </form>
+            <form method="post" action="/accounts/{{ a.id }}/delete" onsubmit="return confirm('Remove {{ a.email }}?')">
+              <button class="btn tiny danger" type="submit">Remove</button>
+            </form>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="muted">Connect at least two accounts to start.</p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="panel">
+  <h2>Activity</h2>
+  {% if events %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>When</th><th>From</th><th>To</th><th>Subject</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        {% for e in events %}
+        <tr>
+          <td class="muted mono">{{ e.created_at | fmt_ts }}</td>
+          <td class="mono">{{ e.from_email }}</td>
+          <td class="mono">{{ e.to_email }}</td>
+          <td>{{ e.subject }}</td>
+          <td><span class="chip {{ e.status }}">{{ e.status }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">No cycles yet.</p>
+  {% endif %}
+</section>
+
+{% endblock %}

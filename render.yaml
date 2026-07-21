@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: kindling
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: APP_SECRET
+        generateValue: true
+      - key: HOST
+        value: "0.0.0.0"
+      - key: PORT
+        value: "8787"
+      - key: APP_BASE_URL
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+    disk:
+      name: kindling-data
+      mountPath: /app/data
+      sizeGB: 1
