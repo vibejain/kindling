@@ -5,6 +5,7 @@ import time
 from typing import Any
 
 from app.accounts import engage_received, list_accounts, send_from_account
+from app.content_engine import ContentEngineError, content_engine_enabled, generate_warm_message
 from app.db import db, get_setting, now
 
 
@@ -63,6 +64,32 @@ def _render(text: str, *, from_name: str, to_name: str) -> str:
     )
 
 
+def _pick_content(
+    sender: dict[str, Any],
+    receiver: dict[str, Any],
+    *,
+    from_name: str,
+    to_name: str,
+) -> tuple[str, str, dict[str, Any] | None]:
+    """
+    Prefer content-engine; fall back to warm_templates so warming never stops.
+    Returns (subject, body, engine_meta_or_None).
+    """
+    if content_engine_enabled():
+        try:
+            msg = generate_warm_message(sender["email"], receiver["email"])
+            return msg["subject"], msg["body"], msg
+        except ContentEngineError:
+            pass
+
+    subject_t, body_t = _pick_template()
+    return (
+        _render(subject_t, from_name=from_name, to_name=to_name),
+        _render(body_t, from_name=from_name, to_name=to_name),
+        None,
+    )
+
+
 def run_warm_cycle() -> dict[str, Any]:
     """Send one warm email between two random accounts, then engage on receive."""
     if get_setting("warmer_running", "0") != "1":
@@ -91,9 +118,9 @@ def run_warm_cycle() -> dict[str, Any]:
 
     from_name = sender.get("display_name") or sender["email"].split("@")[0].title()
     to_name = receiver.get("display_name") or receiver["email"].split("@")[0].title()
-    subject_t, body_t = _pick_template()
-    subject = _render(subject_t, from_name=from_name, to_name=to_name)
-    body = _render(body_t, from_name=from_name, to_name=to_name)
+    subject, body, engine_meta = _pick_content(
+        sender, receiver, from_name=from_name, to_name=to_name
+    )
 
     ts = now()
     with db() as conn:
@@ -115,6 +142,9 @@ def run_warm_cycle() -> dict[str, Any]:
             body=body,
         )
         message_id = result.get("message_id") or ""
+        thread_key = result.get("thread_id") or ""
+        if engine_meta and engine_meta.get("thread_id"):
+            thread_key = engine_meta["thread_id"]
         with db() as conn:
             conn.execute(
                 """
@@ -123,7 +153,7 @@ def run_warm_cycle() -> dict[str, Any]:
                     thread_key = ?
                 WHERE id = ?
                 """,
-                (message_id, now(), result.get("thread_id") or "", event_id),
+                (message_id, now(), thread_key, event_id),
             )
             conn.execute(
                 "UPDATE accounts SET last_send_at = ? WHERE id = ?",
@@ -169,10 +199,17 @@ def run_warm_cycle() -> dict[str, Any]:
     if auto_reply and engaged.get("found"):
         try:
             reply_subject = subject if subject.lower().startswith("re:") else f"Re: {subject}"
-            reply_body = (
-                f"Thanks {from_name.split()[0]}. Got it. Will follow up soon.\n\n{to_name}"
-            )
-            # slight delay so it looks human
+            reply_body = None
+            if content_engine_enabled():
+                try:
+                    reply_msg = generate_warm_message(receiver["email"], sender["email"])
+                    reply_body = reply_msg["body"]
+                except ContentEngineError:
+                    reply_body = None
+            if not reply_body:
+                reply_body = (
+                    f"Thanks {from_name.split()[0]}. Got it. Will follow up soon.\n\n{to_name}"
+                )
             time.sleep(random.uniform(2, 8))
             reply = send_from_account(
                 receiver,
@@ -198,14 +235,25 @@ def run_warm_cycle() -> dict[str, Any]:
                     (f"reply_failed: {exc}"[:500], now(), event_id),
                 )
 
+    push_info = None
+    try:
+        from app.push import maybe_notify_milestone
+
+        push_info = maybe_notify_milestone()
+    except Exception:
+        push_info = None
+
     return {
         "ok": True,
         "event_id": event_id,
         "from": sender["email"],
         "to": receiver["email"],
         "subject": subject,
+        "content_source": (engine_meta or {}).get("source") if engine_meta else "warm_templates",
+        "engine_thread_id": (engine_meta or {}).get("thread_id") if engine_meta else None,
         "engaged": engaged.get("found", False),
         "replied": bool(reply_id),
+        "push": push_info,
     }
 
 
@@ -248,4 +296,5 @@ def stats() -> dict[str, Any]:
         "sent_24h": sent_today,
         "failed_24h": failed,
         "running": get_setting("warmer_running", "0") == "1",
+        "content_engine": content_engine_enabled(),
     }

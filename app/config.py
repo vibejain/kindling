@@ -23,6 +23,17 @@ class Settings(BaseSettings):
     google_client_id: str = ""
     google_client_secret: str = ""
 
+    # Dashboard login (hash preferred; plain AUTH_PASSWORD hashed on first boot)
+    auth_username: str = "admin"
+    auth_password_hash: str = ""
+    auth_password: str = ""
+    session_days: int = 14
+
+    # Web Push (VAPID). Required for iPhone Home Screen notifications.
+    vapid_public_key: str = ""
+    vapid_private_key: str = ""
+    vapid_subject: str = "mailto:admin@example.com"
+
 
 def get_settings() -> Settings:
     return Settings()

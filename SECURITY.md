@@ -25,3 +25,5 @@ Do **not** open a public issue that includes real credentials, OAuth secrets, ma
 - Keep `APP_SECRET` long and random. Rotating it invalidates existing encrypted blobs unless you re-add accounts.
 - Prefer Gmail OAuth over App Passwords when practical.
 - Protect `data/` (SQLite DB). Treat backups of `data/` as sensitive.
+- Set a strong dashboard `AUTH_PASSWORD` (or `AUTH_PASSWORD_HASH`). Put TLS in front on any public host.
+- VAPID private keys are as sensitive as API keys; never commit them.

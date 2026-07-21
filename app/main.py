@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import secrets
-import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, AsyncIterator
@@ -10,10 +9,12 @@ from urllib.parse import quote
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.base import BaseHTTPMiddleware
 
+from app import auth, push
 from app.accounts import (
     delete_account,
     list_accounts,
@@ -33,6 +34,8 @@ templates = Jinja2Templates(directory=str(BASE / "templates"))
 
 def _fmt_ts(value: Any) -> str:
     try:
+        import time
+
         return time.strftime("%b %d %H:%M", time.localtime(float(value)))
     except (TypeError, ValueError, OSError):
         return str(value)
@@ -74,6 +77,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             "APP_SECRET is weak or default. Set a long random value before storing real credentials."
         )
     init_db()
+    auth.ensure_password_hash()
     if not scheduler.running:
         scheduler.add_job(
             _tick_warmer,
@@ -97,13 +101,34 @@ app = FastAPI(
 app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
 
 
+class AuthGateMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        if auth.path_is_public(path) or path.startswith("/static"):
+            return await call_next(request)
+        if auth.is_authenticated(request):
+            return await call_next(request)
+        if path.startswith("/api/") or request.headers.get("accept", "").startswith(
+            "application/json"
+        ):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        return auth.login_redirect(request)
+
+
+app.add_middleware(AuthGateMiddleware)
+
+
 def _ctx(request: Request, **extra: Any) -> dict[str, Any]:
+    settings = get_settings()
     return {
         "request": request,
         "stats": stats(),
         "accounts": list_accounts(),
         "events": recent_events(30),
         "oauth_ready": gmail_oauth.oauth_configured(),
+        "push_ready": push.push_configured(),
+        "vapid_public_key": push.vapid_public_key() if push.push_configured() else "",
+        "auth_user": auth.username(),
         "settings": {
             "daily_limit_per_account": get_setting("daily_limit_per_account", "4"),
             "min_gap_minutes": get_setting("min_gap_minutes", "45"),
@@ -111,6 +136,7 @@ def _ctx(request: Request, **extra: Any) -> dict[str, Any]:
             "auto_reply": get_setting("auto_reply", "1"),
             "warmer_running": get_setting("warmer_running", "0"),
         },
+        "app_base_url": settings.app_base_url,
         **extra,
     }
 
@@ -120,9 +146,144 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/manifest.webmanifest")
+def web_manifest() -> Response:
+    settings = get_settings()
+    body = {
+        "name": "Kindling",
+        "short_name": "Kindling",
+        "description": "Private email warmer dashboard",
+        "start_url": "/",
+        "scope": "/",
+        "display": "standalone",
+        "background_color": "#0c1117",
+        "theme_color": "#ff6a3d",
+        "orientation": "portrait-primary",
+        "icons": [
+            {
+                "src": "/static/icons/icon-192.png",
+                "sizes": "192x192",
+                "type": "image/png",
+                "purpose": "any",
+            },
+            {
+                "src": "/static/icons/icon-512.png",
+                "sizes": "512x512",
+                "type": "image/png",
+                "purpose": "any",
+            },
+            {
+                "src": "/static/icons/icon-512.png",
+                "sizes": "512x512",
+                "type": "image/png",
+                "purpose": "maskable",
+            },
+        ],
+        "id": settings.app_base_url.rstrip("/") + "/",
+    }
+    import json
+
+    return Response(
+        json.dumps(body),
+        media_type="application/manifest+json",
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
+@app.get("/sw.js")
+def service_worker() -> Response:
+    sw_path = BASE / "static" / "sw.js"
+    return Response(
+        sw_path.read_text(encoding="utf-8"),
+        media_type="application/javascript",
+        headers={
+            "Cache-Control": "no-cache",
+            "Service-Worker-Allowed": "/",
+        },
+    )
+
+
+@app.get("/login", response_class=HTMLResponse)
+def login_page(request: Request, next: str = "/", err: str = ""):
+    if auth.is_authenticated(request):
+        return RedirectResponse("/", status_code=303)
+    return templates.TemplateResponse(
+        "login.html",
+        {
+            "request": request,
+            "next": next or "/",
+            "err": err,
+        },
+    )
+
+
+@app.post("/login")
+def login_submit(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+    next: str = Form("/"),
+):
+    if not auth.verify_credentials(username, password):
+        return templates.TemplateResponse(
+            "login.html",
+            {
+                "request": request,
+                "next": next or "/",
+                "err": "Invalid username or password",
+            },
+            status_code=401,
+        )
+    dest = next if next.startswith("/") and not next.startswith("//") else "/"
+    resp = RedirectResponse(dest, status_code=303)
+    auth.set_session_cookie(resp, auth.create_session_token(username.strip()))
+    return resp
+
+
+@app.post("/logout")
+def logout():
+    resp = RedirectResponse("/login", status_code=303)
+    auth.clear_session_cookie(resp)
+    return resp
+
+
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
     return templates.TemplateResponse("index.html", _ctx(request))
+
+
+@app.get("/api/push/vapid-public-key")
+def api_vapid_key():
+    if not push.push_configured():
+        return JSONResponse({"error": "push_not_configured"}, status_code=503)
+    return {"publicKey": push.vapid_public_key()}
+
+
+@app.post("/api/push/subscribe")
+async def api_push_subscribe(request: Request):
+    if not push.push_configured():
+        return JSONResponse({"error": "push_not_configured"}, status_code=503)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "bad_json"}, status_code=400)
+    endpoint = (body or {}).get("endpoint") or ""
+    if not endpoint or "keys" not in (body or {}):
+        return JSONResponse({"error": "invalid_subscription"}, status_code=400)
+    push.save_subscription(endpoint, body)
+    return {"ok": True}
+
+
+@app.post("/api/push/unsubscribe")
+async def api_push_unsubscribe(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "bad_json"}, status_code=400)
+    endpoint = (body or {}).get("endpoint") or ""
+    if endpoint:
+        push.delete_subscription(endpoint)
+    return {"ok": True}
 
 
 @app.post("/accounts/imap")

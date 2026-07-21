@@ -7,7 +7,7 @@
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-ff6a3d?style=flat-square)](https://www.python.org/)
 [![Docker](https://img.shields.io/badge/Docker-ready-3dcf9a?style=flat-square)](docker-compose.yml)
 
-Self-hosted warmup: connect Gmail (OAuth or App Password) plus any IMAP/SMTP inbox. Kindling sends short human-sounding emails between your accounts, stars or marks them important on receive, and can auto-reply, with daily limits and send gaps.
+Self-hosted warmup: connect Gmail (OAuth or App Password) plus any IMAP/SMTP inbox. Kindling sends human-sounding thread mail between your accounts, stars or marks them important on receive, and can auto-reply, with daily limits, send gaps, dashboard login, and optional iPhone PWA push every 50 sends.
 
 ![Kindling dashboard](docs/demo.png)
 
@@ -19,81 +19,86 @@ Self-hosted warmup: connect Gmail (OAuth or App Password) plus any IMAP/SMTP inb
 git clone https://github.com/vibejain/kindling.git
 cd kindling
 cp .env.example .env
-# set APP_SECRET to a long random string
+# set APP_SECRET + AUTH_PASSWORD (dashboard login)
 docker compose up --build
 ```
 
-Open [http://127.0.0.1:8787](http://127.0.0.1:8787)
+Open [http://127.0.0.1:8787](http://127.0.0.1:8787) and sign in.
 
 ## Local (venv)
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env   # set APP_SECRET
+cp .env.example .env   # APP_SECRET + AUTH_PASSWORD
 python run.py
 ```
 
+## Features
+
+| Feature | Notes |
+|---------|--------|
+| Multi-mailbox | Gmail OAuth, Gmail App Password, IMAP/SMTP |
+| Warm mesh | Scheduler (~5 min) + run-once |
+| Content engine | Optional LLM-free thread composer (`content-engine/`) |
+| Engage | Star / important + optional auto-reply |
+| Limits | Daily cap + min gap per account |
+| Auth | Dashboard login (session cookie) |
+| PWA | Add to iPhone Home Screen; Web Push every 50 successful sends |
+
 ## Environment variables
 
-| Variable | Required | Default | Notes |
-|----------|----------|---------|--------|
-| `APP_SECRET` | **yes** | `dev-only-change-me` | Fernet key material for encrypted credentials. Use a long random string. |
-| `APP_BASE_URL` | for OAuth / public URL | `http://127.0.0.1:8787` | Must match your browser URL (and OAuth redirect). |
-| `HOST` | no | `127.0.0.1` | Use `0.0.0.0` behind Docker or a reverse proxy. |
-| `PORT` | no | `8787` | HTTP port. |
-| `GOOGLE_CLIENT_ID` | for Gmail OAuth | empty | From Google Cloud Console. |
-| `GOOGLE_CLIENT_SECRET` | for Gmail OAuth | empty | From Google Cloud Console. |
+| Variable | Required | Notes |
+|----------|----------|--------|
+| `APP_SECRET` | **yes** | Encrypts stored credentials |
+| `AUTH_USERNAME` / `AUTH_PASSWORD` | **yes** (or hash) | Dashboard login |
+| `APP_BASE_URL` | for OAuth / PWA | Must match public URL |
+| `HOST` / `PORT` | no | Default `127.0.0.1:8787`; use `0.0.0.0` in Docker |
+| `GOOGLE_CLIENT_ID` / `SECRET` | for Gmail OAuth | Web client + redirect callback |
+| `VAPID_*` | for iPhone push | Generate once; see `.env.example` |
+| `CONTENT_ENGINE` | no | `1` (default when package present) or `0` |
+| `DATABASE_URL` | for content engine | Postgres URL |
 
 ## Connect accounts
 
 | Method | When to use |
 |--------|-------------|
 | **Gmail OAuth** | Best once you create a Google OAuth client (`./scripts/setup_oauth.sh`) |
-| **Gmail App Password** | Works immediately with [App Passwords](https://myaccount.google.com/apppasswords) |
+| **Gmail App Password** | Fast path with [App Passwords](https://myaccount.google.com/apppasswords) |
 | **IMAP/SMTP** | cPanel, workspace mail, any standard host |
 
-You need **at least 2** accounts with warming on. Start the warmer (cycles about every 5 minutes) or hit **Run one cycle**.
+Need **≥2** accounts with warming on. **Start warmer** or **Run one cycle**.
 
-## Architecture
+## Content engine (optional)
 
-```mermaid
-flowchart LR
-  A[Mailbox A] -->|warm send| B[Mailbox B]
-  B -->|star / important| B
-  B -->|optional reply| A
-  C[Dashboard] -->|limits · gaps · start/stop| W[Warm cycle]
-  W --> A
+LLM-free Node package under `content-engine/`. Plans threads across business "universes", then composes micro→anchor plain-text bodies. Requires Node 20+ and Postgres.
+
+```bash
+cd content-engine && npm install
+# start Postgres (see content-engine/docker-compose.yml), then:
+npm run db:migrate && npm run seed:personas
+# map seed emails in content-engine/src/personas/seed.ts to your real mailboxes
 ```
 
-1. Pick a random eligible sender and receiver from your pool.
-2. Send a short template email.
-3. Receiver marks **Important / Starred** (and read).
-4. Optional short reply back.
-5. Enforce **daily limit** and **min gap** per account.
+Set `DATABASE_URL` and keep `CONTENT_ENGINE_USE_LLM=0`. If the engine is down, Kindling falls back to built-in short templates.
 
-Credentials are encrypted at rest (Fernet, derived from `APP_SECRET`) in local SQLite under `data/`. More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+## iPhone notifications
 
-## Settings (dashboard)
-
-| Setting | Default | Notes |
-|---------|---------|--------|
-| Daily sends / account | 4 | Ramp slowly on new domains |
-| Min gap (minutes) | 45 | Space between sends from one inbox |
-| Mark important | on | Star + important on receive |
-| Auto-reply | on | Short reply from receiver |
+1. Open your Kindling URL in Safari (HTTPS required).
+2. Share → **Add to Home Screen**.
+3. Open from the icon → sign in → **Enable iPhone notifications**.
+4. Push fires at 50 / 100 / 150… successful sends.
 
 ## Deploy on a VPS
-
-Same as Docker quick start. Point DNS / reverse proxy to port `8787`, set:
 
 ```env
 APP_BASE_URL=https://kindling.example.com
 HOST=0.0.0.0
 APP_SECRET=<long-random>
+AUTH_PASSWORD=<strong-password>
 ```
 
-If using Gmail OAuth, add the production callback to your Google OAuth client:
+Gmail OAuth redirect:
 
 `https://kindling.example.com/auth/gmail/callback`
 
@@ -101,35 +106,24 @@ If using Gmail OAuth, add the production callback to your Google OAuth client:
 
 [![Deploy on Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/vibejain/kindling)
 
-Use the included [`render.yaml`](render.yaml). Set `APP_SECRET` and `APP_BASE_URL` in the dashboard. Attach a persistent disk at `/app/data`.
+See [`render.yaml`](render.yaml). Persist `/app/data`.
 
 ## Security
 
-- Use only mailboxes **you own**. Do not warm third-party or purchased inboxes.
-- Never commit `.env`, OAuth client secrets, or `data/`.
-- Rotate `APP_SECRET` carefully: it encrypts stored credentials. Changing it without re-adding accounts breaks decryption.
-- Prefer OAuth over passwords when possible.
-- Bind to localhost locally; put TLS (and auth at the proxy) in front on a VPS.
+- Owned mailboxes only.
+- Never commit `.env`, OAuth secrets, or `data/`.
+- Changing `APP_SECRET` without re-adding accounts breaks decryption.
+- Dashboard login is required; still put TLS in front on a VPS.
 
 See [SECURITY.md](SECURITY.md).
 
-## Troubleshooting
-
-| Symptom | Fix |
-|---------|-----|
-| OAuth redirect mismatch | `APP_BASE_URL` must match the URL you open and the Google redirect URI. |
-| `login_failed` on App Password | Use a [Gmail App Password](https://myaccount.google.com/apppasswords), not your normal password. 2FA must be on. |
-| No sends | Need ≥2 accounts with Warming **On**, then **Start warmer** or **Run one cycle**. |
-| Credentials fail after restart | `APP_SECRET` changed; re-add accounts or restore the previous secret. |
-| Docker healthcheck fails | Confirm the container logs show uvicorn listening on `0.0.0.0:8787`. |
-
 ## Stack
 
-Python · FastAPI · SQLite · APScheduler · Gmail API · IMAP/SMTP
+Python · FastAPI · SQLite · APScheduler · Gmail API · IMAP/SMTP · optional Node content-engine · Web Push
 
 ## Contributing
 
-PRs welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). If Kindling saves you time, **star the repo** so others can find it.
+PRs welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). If Kindling helps, **star the repo**.
 
 ## License
 

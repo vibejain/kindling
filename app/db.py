@@ -72,6 +72,13 @@ def init_db() -> None:
               subject TEXT NOT NULL,
               body TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS push_subscriptions (
+              endpoint TEXT PRIMARY KEY,
+              subscription_json TEXT NOT NULL,
+              created_at REAL NOT NULL,
+              updated_at REAL NOT NULL
+            );
             """
         )
         n = conn.execute("SELECT COUNT(*) AS c FROM warm_templates").fetchone()["c"]
@@ -88,6 +95,7 @@ def init_db() -> None:
             "mark_important": "1",
             "auto_reply": "1",
             "warmer_running": "0",
+            "push_last_milestone": "0",
         }
         for k, v in defaults.items():
             conn.execute(

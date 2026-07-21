@@ -75,6 +75,17 @@
       <form method="post" action="/warmer/run-once"><button class="btn" type="submit">Run one cycle</button></form>
     </div>
 
+    <div class="block" id="push-block">
+      <h3>iPhone notifications</h3>
+      {% if push_ready %}
+      <p class="lede">Safari → Share → Add to Home Screen → open Kindling from the icon → tap Enable. iOS needs the Home Screen app for Web Push.</p>
+      <button class="btn" type="button" id="enable-push">Enable iPhone notifications</button>
+      <p class="lede" id="push-status"></p>
+      {% else %}
+      <p class="warn">Push not configured. Set <code>VAPID_PUBLIC_KEY</code> and <code>VAPID_PRIVATE_KEY</code> in <code>.env</code>.</p>
+      {% endif %}
+    </div>
+
     <form method="post" action="/settings" class="form tight">
       <label>Daily sends / account
         <input name="daily_limit_per_account" type="number" min="1" max="40" value="{{ settings.daily_limit_per_account }}">
@@ -146,4 +157,10 @@
   {% endif %}
 </section>
 
+{% endblock %}
+
+{% block scripts %}
+{% if push_ready %}
+<script src="/static/push.js" defer></script>
+{% endif %}
 {% endblock %}

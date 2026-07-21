@@ -32,8 +32,9 @@ token*.json
 warm_mailboxes.json
 warm_*.json
 
-# Incomplete / local experiments (not part of Kindling OSS)
-content-engine/
+# Content engine (Node)
+content-engine/node_modules/
+content-engine/dist/
 
 # OS / IDE
 .DS_Store
@@ -41,3 +42,5 @@ content-engine/
 .vscode/
 *.swp
 *~
+
+DEPLOY_CREDENTIALS.txt

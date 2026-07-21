@@ -2,9 +2,16 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Kindling: Open-source email warmer</title>
   <meta name="description" content="Warm owned mailboxes with a private mesh. Gmail OAuth + IMAP/SMTP.">
+  <meta name="theme-color" content="#ff6a3d">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Kindling">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192.png">
   <link rel="stylesheet" href="/static/style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -25,9 +32,18 @@
         <p>Open-source email warmer</p>
       </div>
     </div>
-    <div class="status {% if stats.running %}on{% else %}off{% endif %}">
-      <span class="dot"></span>
-      {% if stats.running %}Warming{% else %}Paused{% endif %}
+    <div class="top-right">
+      {% if stats is defined and stats %}
+      <div class="status {% if stats.running %}on{% else %}off{% endif %}">
+        <span class="dot"></span>
+        {% if stats.running %}Warming{% else %}Paused{% endif %}
+      </div>
+      {% endif %}
+      {% if auth_user is defined and auth_user %}
+      <form method="post" action="/logout" class="logout-form">
+        <button class="btn tiny" type="submit">Log out</button>
+      </form>
+      {% endif %}
     </div>
   </header>
   <main>
@@ -37,5 +53,6 @@
     <span>Owned mailboxes only · not for spam</span>
     <a href="https://github.com/vibejain/kindling" rel="noopener">GitHub</a>
   </footer>
+  {% block scripts %}{% endblock %}
 </body>
 </html>

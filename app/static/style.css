@@ -319,6 +319,20 @@ th {
 .foot a { color: var(--muted); }
 .foot a:hover { color: var(--ember); }
 
+.top-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.logout-form { margin: 0; }
+.login-panel {
+  max-width: 420px;
+  margin: 28px auto 0;
+}
+.push-ok { color: var(--mint); }
+.push-warn { color: #ffb89a; }
+
 @keyframes rise {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: none; }

@@ -1,0 +1,31 @@
+{
+  "name": "@email-warmer/content-engine",
+  "version": "0.3.0",
+  "private": true,
+  "description": "Thread-first content engine for email warmup (LLM-free local compose)",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "plan:sample": "tsx scripts/plan-sample-threads.ts",
+    "generate:sample": "tsx scripts/generate-sample.ts",
+    "seed:personas": "tsx scripts/seed-personas.ts",
+    "warm:next": "tsx scripts/warm-next.ts",
+    "fallback:build": "tsx scripts/build-fallback-bank.ts",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "db:migrate": "tsx scripts/migrate.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "pg": "^8.14.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "@types/pg": "^8.11.11",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2"
+  }
+}
